@@ -48,7 +48,7 @@ static const char *default_compressor = "lz4";
 static const char *default_compressor = "lzo";
 #endif /*CONFIG_ZRAM_LZ4_COMPRESS*/
 #else /*CONFIG_PRODUCT_REALME_TRINKET*/
-static const char *default_compressor = "lzo";
+static const char *default_compressor = CONFIG_ZRAM_DEFAULT_COMP_ALGORITHM;
 #endif/*CONFIG_PRODUCT_REALME_TRINKET*/
 
 /* Module params (documentation at end) */
