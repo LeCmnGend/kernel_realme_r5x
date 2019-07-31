@@ -6,20 +6,29 @@ else
 	KERNEL_BUILD := 0
 endif
 
-
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-4.14
+	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-4.19
 	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
-	ifeq ($(CONFIG_ARCH_QCS405), y)
-		include $(AUDIO_ROOT)/config/qcs405auto.conf
-		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/qcs405autoconf.h
+	ifeq ($(CONFIG_ARCH_KONA), y)
+		include $(AUDIO_ROOT)/config/konaauto.conf
+		INCS    +=  -include $(AUDIO_ROOT)/config/konaautoconf.h
 	endif
+	ifeq ($(CONFIG_ARCH_LITO), y)
+		include $(AUDIO_ROOT)/config/litoauto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/litoautoconf.h
+	endif
+	ifeq ($(CONFIG_ARCH_ATOLL), y)
+		include $(AUDIO_ROOT)/4.0/config/atollauto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/4.0/config/atollautoconf.h
+	endif
+
 endif
 
 # As per target team, build is done as follows:
@@ -46,11 +55,25 @@ UAPI_INC :=	-I$(AUDIO_ROOT)/include/$(UAPI_DIR)
 COMMON_DIR :=	include
 COMMON_INC :=	-I$(AUDIO_ROOT)/$(COMMON_DIR)
 
-############ CSRA66X0 ############
+ifeq ($(CONFIG_ARCH_ATOLL), y)
+	UAPI_DIR :=     uapi
+	UAPI_INC :=     -I$(AUDIO_ROOT)/4.0/include/$(UAPI_DIR)
+	COMMON_DIR :=   include
+	COMMON_INC :=   -I$(AUDIO_ROOT)/4.0/$(COMMON_DIR)
+endif
 
-# for CSRA66X0 Codec
-ifdef CONFIG_SND_SOC_CSRA66X0
-	CSRA66X0_OBJS += csra66x0.o
+############ WCD938X ############
+
+# for WCD938X Codec
+ifdef CONFIG_SND_SOC_WCD938X
+	WCD938X_OBJS += wcd938x.o
+	WCD938X_OBJS += wcd938x-regmap.o
+	WCD938X_OBJS += wcd938x-tables.o
+	WCD938X_OBJS += wcd938x-mbhc.o
+endif
+
+ifdef CONFIG_SND_SOC_WCD938X_SLAVE
+	WCD938X_SLAVE_OBJS += wcd938x-slave.o
 endif
 
 LINUX_INC +=	-Iinclude/linux
@@ -58,8 +81,7 @@ LINUX_INC +=	-Iinclude/linux
 INCS +=		$(COMMON_INC) \
 		$(UAPI_INC)
 
-#EXTRA_CFLAGS += $(INCS)
-ccflags-y += $(INCS)
+EXTRA_CFLAGS += $(INCS)
 
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
@@ -79,28 +101,33 @@ KBUILD_CPPFLAGS += $(CDEFINES)
 # AUDIO driver.  Note that we must use EXTRA_CFLAGS here so that it
 # will override the kernel settings.
 ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
-#EXTRA_CFLAGS += -Wmaybe-uninitialized
-ccflags-y += -Wmaybe-uninitialized
+EXTRA_CFLAGS += -Wmaybe-uninitialized
 endif
 #EXTRA_CFLAGS += -Wmissing-prototypes
 
 ifeq ($(call cc-option-yn, -Wheader-guard),y)
-#EXTRA_CFLAGS += -Wheader-guard
-ccflags-y += -Wheader-guard
+EXTRA_CFLAGS += -Wheader-guard
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/ipc/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/soc/Module.symvers
-endif
-
-ifeq ($(CONFIG_SND_SOC_GCOV), y)
-GCOV_PROFILE := y
+	ifeq ($(CONFIG_ARCH_ATOLL), y)
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/ipc/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/dsp/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/asoc/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/asoc/codecs/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/soc/Module.symvers
+	else
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/ipc/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/soc/Module.symvers
+	endif
 endif
 
 # Module information used by KBuild framework
-obj-$(CONFIG_SND_SOC_CSRA66X0) += csra66x0_dlkm.o
-csra66x0_dlkm-y := $(CSRA66X0_OBJS)
+obj-$(CONFIG_SND_SOC_WCD938X) += wcd938x_dlkm.o
+wcd938x_dlkm-y := $(WCD938X_OBJS)
+
+obj-$(CONFIG_SND_SOC_WCD938X_SLAVE) += wcd938x_slave_dlkm.o
+wcd938x_slave_dlkm-y := $(WCD938X_SLAVE_OBJS)

@@ -1,45 +1,37 @@
 # We can build either as part of a standalone Kernel build or as
 # an external module.  Determine which mechanism is being used
-ifeq ($(MODNAME),)
+ifeq ($(MODNAME), )
 	KERNEL_BUILD := 1
 else
 	KERNEL_BUILD := 0
 endif
 
-
-
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-4.9
+	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-4.19
 	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
-	ifeq ($(CONFIG_ARCH_SDM845), y)
-		include $(AUDIO_ROOT)/config/sdm845auto.conf
+	ifeq ($(CONFIG_ARCH_ATOLL), y)
+		include $(AUDIO_ROOT)/4.0/config/atollauto.conf
 		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/sdm845autoconf.h
+		INCS    +=  -include $(AUDIO_ROOT)/4.0/config/atollautoconf.h
 	endif
-	ifeq ($(CONFIG_ARCH_SDM670), y)
-		include $(AUDIO_ROOT)/config/sdm670auto.conf
-		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/sdm670autoconf.h
-	endif
-	ifeq ($(CONFIG_ARCH_SDM450), y)
-		include $(AUDIO_ROOT)/config/sdm670auto.conf
-		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/sdm670autoconf.h
-	endif
-	ifeq ($(CONFIG_ARCH_SM6150), y)
+	ifeq ($(CONFIG_ARCH_TRINKET), y)
 		include $(AUDIO_ROOT)/config/sm6150auto.conf
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sm6150autoconf.h
 	endif
-	ifeq ($(CONFIG_ARCH_TRINKET), y)
-		include $(AUDIO_ROOT)/config/trinketauto.conf
+	ifeq ($(CONFIG_ARCH_KONA), y)
+		include $(AUDIO_ROOT)/config/konaauto.conf
+		INCS    +=  -include $(AUDIO_ROOT)/config/konaautoconf.h
+	endif
+	ifeq ($(CONFIG_ARCH_LITO), y)
+		include $(AUDIO_ROOT)/config/litoauto.conf
 		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/trinketautoconf.h
+		INCS    +=  -include $(AUDIO_ROOT)/config/litoautoconf.h
 	endif
 	ifeq ($(CONFIG_ARCH_SM8150), y)
 		include $(AUDIO_ROOT)/config/sm8150auto.conf
@@ -50,6 +42,16 @@ ifeq ($(KERNEL_BUILD), 0)
 		include $(AUDIO_ROOT)/config/sm8150auto.conf
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sm8150autoconf.h
+	endif
+	ifeq ($(CONFIG_ARCH_QCS405), y)
+		include $(AUDIO_ROOT)/config/qcs405auto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/qcs405autoconf.h
+	endif
+	ifeq ($(CONFIG_QTI_GVM), y)
+		include $(AUDIO_ROOT)/config/gvmauto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
 	endif
 endif
 
@@ -77,14 +79,42 @@ UAPI_INC :=	-I$(AUDIO_ROOT)/include/$(UAPI_DIR)
 COMMON_DIR :=	include
 COMMON_INC :=	-I$(AUDIO_ROOT)/$(COMMON_DIR)
 
-############ WCD934X ############
+ifeq ($(CONFIG_ARCH_ATOLL), y)
+		UAPI_DIR :=	uapi
+		UAPI_INC :=	-I$(AUDIO_ROOT)/4.0/include/$(UAPI_DIR)
+		COMMON_DIR :=	include
+		COMMON_INC :=	-I$(AUDIO_ROOT)/4.0/$(COMMON_DIR)
+endif
 
-# for WCD934X Codec
-ifdef CONFIG_SND_SOC_WCD934X
-	WCD934X_OBJS += wcd934x.o
-	WCD934X_OBJS += wcd934x-dsp-cntl.o
-	WCD934X_OBJS += wcd934x-mbhc.o
-	WCD934X_OBJS += wcd934x-dsd.o
+############ Native Enc/Dec ############
+
+ifdef CONFIG_MSM_QDSP6V2_CODECS
+	NATIVE_OBJS += q6audio_v2.o q6audio_v2_aio.o
+	NATIVE_OBJS += audio_utils_aio.o
+	NATIVE_OBJS += audio_utils.o
+	NATIVE_OBJS += audio_native.o
+	NATIVE_OBJS += aac_in.o
+	NATIVE_OBJS += amrnb_in.o
+	NATIVE_OBJS += amrwb_in.o
+	NATIVE_OBJS += audio_aac.o
+	NATIVE_OBJS += audio_alac.o
+	NATIVE_OBJS += audio_amrnb.o
+	NATIVE_OBJS += audio_amrwb.o
+	NATIVE_OBJS += audio_amrwbplus.o
+	NATIVE_OBJS += audio_ape.o
+	NATIVE_OBJS += audio_evrc.o
+	NATIVE_OBJS += audio_g711alaw.o
+	NATIVE_OBJS += audio_g711mlaw.o
+	NATIVE_OBJS += audio_hwacc_effects.o
+	NATIVE_OBJS += audio_mp3.o
+	NATIVE_OBJS += audio_multi_aac.o
+	NATIVE_OBJS += audio_qcelp.o
+	NATIVE_OBJS += audio_wma.o
+	NATIVE_OBJS += audio_wmapro.o
+	NATIVE_OBJS += evrc_in.o
+	NATIVE_OBJS += g711alaw_in.o
+	NATIVE_OBJS += g711mlaw_in.o
+	NATIVE_OBJS += qcelp_in.o
 endif
 
 LINUX_INC +=	-Iinclude/linux
@@ -121,17 +151,15 @@ EXTRA_CFLAGS += -Wheader-guard
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/ipc/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/soc/Module.symvers
-endif
-
-ifeq ($(CONFIG_SND_SOC_GCOV), y)
-GCOV_PROFILE := y
+	ifeq ($(CONFIG_ARCH_ATOLL), y)
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/dsp/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/4.0/asoc/Module.symvers
+	else
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
+		KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers
+	endif
 endif
 
 # Module information used by KBuild framework
-obj-$(CONFIG_SND_SOC_WCD934X) += wcd934x_dlkm.o
-wcd934x_dlkm-y := $(WCD934X_OBJS)
+obj-$(CONFIG_MSM_QDSP6V2_CODECS) += native_dlkm.o
+native_dlkm-y := $(NATIVE_OBJS)
