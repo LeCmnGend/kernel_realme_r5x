@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/clk.h>
@@ -21,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/input.h>
 #include <linux/of_device.h>
+#include <linux/pm_qos.h>
 #include <linux/soc/qcom/fsa4480-i2c.h>
 #include <sound/core.h>
 #include <sound/soc.h>
@@ -29,21 +22,26 @@
 #include <sound/pcm_params.h>
 #include <sound/info.h>
 #include <soc/snd_event.h>
+#include <soc/swr-common.h>
 #include <soc/qcom/socinfo.h>
 #include <dsp/q6afe-v2.h>
 #include <dsp/q6core.h>
 #include "device_event.h"
 #include "msm-pcm-routing-v2.h"
-#include "codecs/msm-cdc-pinctrl.h"
+#include <asoc/msm-cdc-pinctrl.h>
 #include "codecs/wcd934x/wcd934x.h"
 #include "codecs/wcd9335.h"
 #include "codecs/wcd934x/wcd934x-mbhc.h"
 #include "codecs/wcd937x/wcd937x-mbhc.h"
+#include "codecs/wcd938x/wcd938x-mbhc.h"
 #include "codecs/wsa881x.h"
 #include "codecs/bolero/bolero-cdc.h"
 #include <dt-bindings/sound/audio-codec-port-types.h>
 #include "codecs/bolero/wsa-macro.h"
 #include "codecs/wcd937x/wcd937x.h"
+#include "codecs/wcd938x/wcd938x.h"
+
+#include "sm6150-port-config.h"
 
 #define DRV_NAME "sm6150-asoc-snd"
 
@@ -77,6 +75,7 @@
 #define TDM_CHANNEL_MAX 8
 
 #define ADSP_STATE_READY_TIMEOUT_MS 3000
+#define MSM_LL_QOS_VALUE 300 /* time in us to ensure LPM doesn't go in C3/C4 */
 #define MSM_HIFI_ON 1
 
 #define SM6150_SOC_VERSION_1_0 0x00010000
@@ -210,9 +209,9 @@ struct aux_codec_dev_info {
 struct msm_asoc_mach_data {
 	struct snd_info_entry *codec_root;
 	int usbc_en2_gpio; /* used by gpio driver API */
+	struct device_node *mi2s_gpio_p[MI2S_MAX]; /* used by pinctrl API */
 	int hph_en1_gpio;
 	int hph_en0_gpio;
-	struct device_node *mi2s_gpio_p[MI2S_MAX]; /* used by pinctrl API */
 	struct device_node *dmic01_gpio_p; /* used by pinctrl API */
 	struct device_node *dmic23_gpio_p; /* used by pinctrl API */
 	struct device_node *us_euro_gpio_p; /* used by pinctrl API */
@@ -649,7 +648,7 @@ static int msm_aux_codec_init(struct snd_soc_component *component);
 static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.read_fw_bin = false,
 	.calibration = NULL,
-	.detect_extn_cable = false,
+	.detect_extn_cable = true,
 	.mono_stero_detection = false,
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
@@ -666,6 +665,7 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.mbhc_micbias = MIC_BIAS_2,
 	.anc_micbias = MIC_BIAS_2,
 	.enable_anc_mic_detect = false,
+	.moisture_duty_cycle_en = true,
 };
 
 static struct snd_soc_dapm_route wcd_audio_paths[] = {
@@ -4231,6 +4231,8 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					SNDRV_PCM_HW_PARAM_RATE);
 	struct snd_interval *channels = hw_param_interval(params,
 					SNDRV_PCM_HW_PARAM_CHANNELS);
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+
 	int rc = 0;
 	int idx;
 	void *config = NULL;
@@ -4883,6 +4885,7 @@ static int msm_audrx_tavil_init(struct snd_soc_pcm_runtime *rtd)
 		}
 		pdata->codec_root = entry;
 	}
+	pdata->codec_root = entry;
 	tavil_codec_info_create_codec_entry(pdata->codec_root, codec);
 
 	codec_reg_done = true;
@@ -5072,6 +5075,7 @@ static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	struct msm_asoc_mach_data *pdata =
 				snd_soc_card_get_drvdata(rtd->card);
 
+	pr_err("%s entry\n", __func__);
 	ret = snd_soc_add_codec_controls(codec, msm_int_snd_controls,
 				ARRAY_SIZE(msm_int_snd_controls));
 	if (ret < 0) {
@@ -5086,6 +5090,7 @@ static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			__func__, ret);
 		return ret;
 	}
+
 	snd_soc_dapm_new_controls(dapm, msm_int_dapm_widgets,
 				ARRAY_SIZE(msm_int_dapm_widgets));
 
@@ -5125,8 +5130,9 @@ static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 				break;
 			}
 		}
+		bolero_set_port_map(codec, ARRAY_SIZE(sm_port_map),
+				    sm_port_map);
 	}
-
 	card = rtd->card->snd_card;
 	if (!pdata->codec_root) {
 		entry = snd_info_create_subdir(card->module, "codecs",
@@ -5154,6 +5160,7 @@ static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		bolero_register_wake_irq(codec, false);
 
 	codec_reg_done = true;
+	pr_err("%s exit\n", __func__);
 	return 0;
 err:
 	return ret;
@@ -5181,10 +5188,7 @@ static void *def_wcd_mbhc_cal(void)
 		return NULL;
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(wcd_mbhc_cal)->X) = (Y))
-	//ifdef CONFIG_ODM_WT_EDIT
-	//Gong.Chen@ODM_WT.mm.audiodriver.Machine, 2019/04/08, Modify for headset
-	S(v_hs_max, 1700);
-	//endif CONFIG_ODM_WT_EDIT
+	S(v_hs_max, 1600);
 #undef S
 #define S(X, Y) ((WCD_MBHC_CAL_BTN_DET_PTR(wcd_mbhc_cal)->X) = (Y))
 	S(num_btn, WCD_MBHC_DEF_BUTTONS);
@@ -5195,10 +5199,7 @@ static void *def_wcd_mbhc_cal(void)
 		(sizeof(btn_cfg->_v_btn_low[0]) * btn_cfg->num_btn);
 
 	btn_high[0] = 75;
-	//ifdef CONFIG_ODM_WT_EDIT
-	//Gong.Chen@ODM_WT.mm.audiodriver.Machine, 2019/06/20, Modify for headset
-	btn_high[1] = 130;
-	//endif CONFIG_ODM_WT_EDIT
+	btn_high[1] = 150;
 	btn_high[2] = 237;
 	btn_high[3] = 500;
 	btn_high[4] = 500;
@@ -5817,6 +5818,30 @@ static struct snd_soc_ops sm6150_tdm_be_ops = {
 	.shutdown = sm6150_tdm_snd_shutdown
 };
 
+static int msm_fe_qos_prepare(struct snd_pcm_substream *substream)
+{
+	return 0;
+	cpumask_t mask;
+
+	if (pm_qos_request_active(&substream->latency_pm_qos_req))
+		pm_qos_remove_request(&substream->latency_pm_qos_req);
+
+	cpumask_clear(&mask);
+	cpumask_set_cpu(1, &mask); /* affine to core 1 */
+	cpumask_set_cpu(2, &mask); /* affine to core 2 */
+	cpumask_copy(&substream->latency_pm_qos_req.cpus_affine, &mask);
+
+	substream->latency_pm_qos_req.type = PM_QOS_REQ_AFFINE_CORES;
+
+	pm_qos_add_request(&substream->latency_pm_qos_req,
+			  PM_QOS_CPU_DMA_LATENCY,
+			  MSM_LL_QOS_VALUE);
+}
+
+static struct snd_soc_ops msm_fe_qos_ops = {
+	.prepare = msm_fe_qos_prepare,
+};
+
 static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 {
 	int ret = 0;
@@ -5875,6 +5900,7 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 		if (mi2s_intf_conf[index].msm_is_ext_mclk) {
 			pr_debug("%s: Enabling mclk, clk_freq_in_hz = %u\n",
 				__func__, mi2s_mclk[index].clk_freq_in_hz);
+			mi2s_mclk[index].enable = 1;
 			ret = afe_set_lpass_clock_v2(port_id,
 						     &mi2s_mclk[index]);
 			if (ret < 0) {
@@ -5882,7 +5908,6 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 					__func__, ret);
 				goto clk_off;
 			}
-			mi2s_mclk[index].enable = 1;
 		}
 		if (pdata->mi2s_gpio_p[index])
 			msm_cdc_pinctrl_select_active_state(
@@ -5935,12 +5960,12 @@ static void msm_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 		if (mi2s_intf_conf[index].msm_is_ext_mclk) {
 			pr_debug("%s: Disabling mclk, clk_freq_in_hz = %u\n",
 				 __func__, mi2s_mclk[index].clk_freq_in_hz);
+			mi2s_mclk[index].enable = 0;
 			ret = afe_set_lpass_clock_v2(port_id,
 						     &mi2s_mclk[index]);
 			if (ret < 0)
 				pr_err("%s: mclk disable failed for MCLK (%d); ret=%d\n",
 					__func__, index, ret);
-			mi2s_mclk[index].enable = 0;
 		}
 	}
 	mutex_unlock(&mi2s_intf_conf[index].lock);
@@ -6203,6 +6228,7 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		/* this dainlink has playback support */
 		.ignore_pmdown_time = 1,
 		.id = MSM_FRONTEND_DAI_MULTIMEDIA5,
+		.ops = &msm_fe_qos_ops,
 	},
 	{/* hw:x,14 */
 		.name = "Listen 1 Audio Service",
@@ -6269,6 +6295,7 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.ignore_pmdown_time = 1,
 		 /* this dainlink has playback support */
 		.id = MSM_FRONTEND_DAI_MULTIMEDIA8,
+		.ops = &msm_fe_qos_ops,
 	},
 	/* HDMI Hostless */
 	{/* hw:x,18 */
@@ -8351,6 +8378,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 			       sizeof(msm_wsa_cdc_dma_be_dai_links));
 			total_links +=
 				ARRAY_SIZE(msm_wsa_cdc_dma_be_dai_links);
+
 			memcpy(msm_sm6150_dai_links + total_links,
 			       msm_rx_tx_cdc_dma_be_dai_links,
 			       sizeof(msm_rx_tx_cdc_dma_be_dai_links));
@@ -8422,6 +8450,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 		}
 
 		dailink = msm_sm6150_dai_links;
+		pr_err("%s\n. dailinks\n", __func__);
 	} else if (!strcmp(match->data, "stub_codec")) {
 		card = &snd_soc_card_stub_msm;
 
@@ -8545,14 +8574,14 @@ static int msm_aux_codec_init(struct snd_soc_component *component)
 		}
 		pdata->codec_root = entry;
 	}
-	wcd937x_info_create_codec_entry(pdata->codec_root, codec);
+	wcd938x_info_create_codec_entry(pdata->codec_root, codec);
 codec_root_err:
 	mbhc_calibration = def_wcd_mbhc_cal();
 	if (!mbhc_calibration) {
 		return -ENOMEM;
 	}
 	wcd_mbhc_cfg.calibration = mbhc_calibration;
-	ret = wcd937x_mbhc_hs_detect(codec, &wcd_mbhc_cfg);
+	ret = wcd938x_mbhc_hs_detect(codec, &wcd_mbhc_cfg);
 
 	return ret;
 }
