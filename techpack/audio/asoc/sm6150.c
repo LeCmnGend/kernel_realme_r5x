@@ -45,6 +45,11 @@
 #include "codecs/bolero/wsa-macro.h"
 #include "codecs/wcd937x/wcd937x.h"
 
+//#ifdef CONFIG_PRODUCT_REALME_TRINKET
+//He.Lu@Mutilmedia.AudioDriver, 2019/12/18, Add for homer
+//#include "codecs/sia81xx/sia81xx_aux_dev_if.h"
+//#endif
+
 #define DRV_NAME "sm6150-asoc-snd"
 
 #define __CHIPSET__ "SM6150 "
@@ -5880,6 +5885,10 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 			if (ret < 0) {
 				pr_err("%s: afe lpass mclk failed, err:%d\n",
 					__func__, ret);
+<<<<<<< HEAD
+=======
+
+>>>>>>> 30f261a72b38 (treewide: Drop oppo kevent reference)
 				goto clk_off;
 			}
 			mi2s_mclk[index].enable = 1;
