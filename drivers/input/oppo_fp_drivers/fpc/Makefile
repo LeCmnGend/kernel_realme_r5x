@@ -2,6 +2,8 @@
 DEFS = -DCONFIG_OPPO_FINGERPRINT_KERNEL_VER=$(VERSION)
 ccflags-y += $(DEFS)
 
+ccflags-y += -Ofast
+
 ifeq ($(CONFIG_OPPO_FINGERPRINT_QCOM),y)
 obj-y  += fpc1020_tee.o
 endif

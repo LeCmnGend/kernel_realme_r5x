@@ -1,5 +1,7 @@
 ccflags-y := -Iinclude/linux
 
+ccflags-y += -Ofast
+
 msm_kgsl_core-y = \
 	kgsl.o \
 	kgsl_trace.o \
