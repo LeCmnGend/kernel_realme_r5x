@@ -1214,6 +1214,8 @@ struct hv_device *vmbus_device_create(const uuid_le *type,
 	return child_device_obj;
 }
 
+static u64 vmbus_dma_mask = ~0ULL;
+
 /*
  * vmbus_device_register - Register the child device
  */
