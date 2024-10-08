@@ -127,3 +127,11 @@ all.config
 
 # fetched Android config fragments
 kernel/configs/android-*.cfg
+
+# build
+out/
+*.zip
+t.sh
+prebuilt
+KernelSU
+	
